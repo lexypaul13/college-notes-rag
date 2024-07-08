@@ -479,6 +479,14 @@ class CollegeNotesRAG:
                 return
             self.db._collection.delete(ids=[documents['ids'][i] for i in to_delete])
             print(f"🗑️ Deleted '{filename}' from the database.")
+        
+        # Delete the file from DATA_PATH
+            file_path = os.path.join(DATA_PATH, filename)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"🗑️ Deleted '{filename}' from {DATA_PATH}")
+            else:
+                print(f"⚠️ File '{filename}' not found in {DATA_PATH}")
         except Exception as e:
             print(f"❌ Error deleting document: {str(e)}")
 
