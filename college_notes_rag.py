@@ -177,18 +177,36 @@ class CollegeNotesRAG:
     
     def create_database(self):
         print("🚀 Creating database...")
+        if not os.path.exists(DATA_PATH):
+            os.makedirs(DATA_PATH)
+            print(f"📁 Created directory: {DATA_PATH}")
+    
         documents = DirectoryLoader(DATA_PATH, glob="*.pdf").load()
         if not documents:
             print("❌ No PDF documents found in the data/notes directory.")
             return
+    
         chunks = []
         for doc in documents:
             chunks.extend(self.process_document(doc.metadata['source']))
-        
+    
         print(f"Processing {len(chunks)} chunks...")
-        self.db = Chroma.from_documents(chunks, self.embedding_function, persist_directory=CHROMA_PATH)
+    
+    # Increase batch size
+        batch_size = 100
+        total_batches = math.ceil(len(chunks) / batch_size)
+    
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i:i+batch_size]
+            if i == 0:
+                self.db = Chroma.from_documents(batch, self.embedding_function, persist_directory=CHROMA_PATH)
+            else:
+                self.db.add_documents(batch)
+            print(f"✅ Processed batch {i//batch_size + 1} of {total_batches}")
+    
         self.db.persist()
         print(f"✅ Database created with {len(chunks)} chunks from {len(documents)} documents.")
+        
         print(f"Database persisted to {CHROMA_PATH}")
 
     def load_database(self):
@@ -357,10 +375,17 @@ class CollegeNotesRAG:
         return chat_history, list(documents_used)
 
     def converse_and_export(self, initial_document_name):
-        if not os.path.exists(os.path.join(DATA_PATH, initial_document_name)):
-            print(f"❌ Document {initial_document_name} not found in {DATA_PATH}.")
+        data_path_file = os.path.join(DATA_PATH, initial_document_name)
+        current_dir_file = os.path.join(os.getcwd(), initial_document_name)
+    
+        if os.path.exists(data_path_file):
+            file_path = data_path_file
+        elif os.path.exists(current_dir_file):
+            file_path = current_dir_file
+        else:
+            print(f"❌ Document {initial_document_name} not found in {DATA_PATH} or current directory.")
             return
-        chat_history, documents_used = self.start_conversation(initial_document_name)
+        chat_history, documents_used = self.start_conversation(file_path)
         if chat_history:
             export_choice = input("💾 Do you want to export the conversation? (yes/no): ").lower()
             if export_choice == 'yes':
@@ -460,10 +485,13 @@ class CollegeNotesRAG:
         if not os.path.exists(filepath):
             print(f"❌ File '{filepath}' not found.")
             return
-
         filename = os.path.basename(filepath)
+        destination = os.path.join(DATA_PATH, filename)
+        os.makedirs(DATA_PATH, exist_ok=True)
+        shutil.copy2(filepath, destination)
+        print(f"📁 Copied '{filename}' to {DATA_PATH}")
         print(f"📄 Processing file: {filename}")
-
+        filename = os.path.basename(filepath)
         try:
             print("🔍 Analyzing document content...")
             chunks = self.process_document(filepath)
@@ -586,6 +614,10 @@ class CollegeNotesRAG:
             output.write(output_file)
 
 def main():
+    if not os.path.exists(DATA_PATH):
+        os.makedirs(DATA_PATH)
+        print(f"📁 Created directory: {DATA_PATH}")
+        
     if len(sys.argv) < 2:
         print_welcome_message()
         print_instructions()
