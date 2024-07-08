@@ -639,12 +639,6 @@ class CollegeNotesRAG:
 
 
 def main():
-    if not os.path.exists(DATA_PATH):
-        os.makedirs(DATA_PATH)
-        print(f"📁 Created directory: {DATA_PATH}")
-
-    rag = CollegeNotesRAG()
-
     if len(sys.argv) < 2:
         print_welcome_message()
         print_instructions()
@@ -652,6 +646,13 @@ def main():
 
     command = sys.argv[1]
     print(f"🎯 Command: {command}")
+
+    if command == "instructions":
+        print_instructions()
+        return
+
+    rag = CollegeNotesRAG()
+
     commands = {
         "create": rag.create_database,
         "list": rag.list_documents,
@@ -678,7 +679,6 @@ def main():
             print(f"❌ An error occurred: {str(e)}")
     else:
         print("❌ Invalid command. Use 'instructions' for help.")
-        
+
 if __name__ == "__main__":
     main()
-
