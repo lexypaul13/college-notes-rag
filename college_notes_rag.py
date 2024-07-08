@@ -211,7 +211,7 @@ class CollegeNotesRAG:
 
     def load_database(self):
         if not os.path.exists(CHROMA_PATH):
-            print("🚫 Database does not exist. Please run 'create' command first.")
+            print("📢 Database does not exist. It will be created when you add documents.")
             return None
         try:
             return Chroma(persist_directory=CHROMA_PATH, embedding_function=self.embedding_function)
@@ -450,21 +450,22 @@ class CollegeNotesRAG:
             print(f"❌ No documents found matching '{search_term}'")
 
     def list_documents(self):
-        print("🔄 Loading database...")
         if self.db is None:
-            print("🚫 Database not loaded. Please run 'create' command first.")
+            print("📢 No database found. Add documents to create a database.")
             return
+    
         try:
             documents = self.db.get()
-            unique_sources = set(doc['source'] for doc in documents['metadatas'])
-            if unique_sources:
+            if not documents['metadatas']:
+                print("📢 Database is empty. No documents found.")
+            else:
                 print("📋 Documents in the database:")
+                unique_sources = set(doc['source'] for doc in documents['metadatas'])
                 for source in unique_sources:
                     print(f"  📄 {os.path.basename(source)}")
-            else:
-                print("📋 No documents found in the database.")
         except Exception as e:
             print(f"❌ Error listing documents: {str(e)}")
+    
 
     def delete_document(self, filename):
         if self.db is None:
@@ -490,30 +491,39 @@ class CollegeNotesRAG:
         os.makedirs(DATA_PATH, exist_ok=True)
         shutil.copy2(filepath, destination)
         print(f"📁 Copied '{filename}' to {DATA_PATH}")
+        
         print(f"📄 Processing file: {filename}")
-        filename = os.path.basename(filepath)
         try:
             print("🔍 Analyzing document content...")
-            chunks = self.process_document(filepath)
+            chunks = self.process_document(destination)
             print(f"✅ Document analyzed. Found {len(chunks)} chunks.")
 
             if not chunks:
                 print("⚠️ No content extracted from the document. It might be empty or unreadable.")
                 return
 
-            print(f"💾 Adding document to database in batches...")
-            batch_size = 50
-            total_batches = math.ceil(len(chunks) / batch_size)
-        
-            for i in range(0, len(chunks), batch_size):
-                batch = chunks[i:i+batch_size]
+            print(f"💾 Adding document to database...")
+            if self.db is None:
+                print("📢 Creating new database...")
+                batch_size = 100  # Adjust this value if needed
+                initial_batch = chunks[:batch_size]
+                self.db = Chroma.from_documents(initial_batch, self.embedding_function, persist_directory=CHROMA_PATH)
+                chunks = chunks[batch_size:]  # Remaining chunks
+
+            if chunks:  # If there are remaining chunks or if the database already existed
+                batch_size = 100  # Adjust this value if needed
+                total_batches = math.ceil(len(chunks) / batch_size)
+
+                for i in range(0, len(chunks), batch_size):
+                    batch = chunks[i:i+batch_size]
                 try:
                     self.db.add_documents(batch)
                     print(f"✅ Added batch {math.floor(i/batch_size) + 1} of {total_batches}")
                 except Exception as e:
                     print(f"❌ Error adding batch {math.floor(i/batch_size) + 1}: {str(e)}")
                     return
-
+            
+            self.db.persist()
             print(f"🎉 Successfully added '{filename}' to the database.")
             print(f"📊 Total chunks added: {len(chunks)}")
 
@@ -521,18 +531,24 @@ class CollegeNotesRAG:
             print("\n⚠️ Operation cancelled by user.")
         except Exception as e:
             print(f"❌ An error occurred while processing '{filename}': {str(e)}")
-
     # Optionally, you can add a step to verify the document was added
         self.verify_document_added(filename)
 
     def verify_document_added(self, filename):
         print(f"🔍 Verifying '{filename}' was added to the database...")
-        documents = self.db.get()
-        if any(filename == os.path.basename(doc['source']) for doc in documents['metadatas']):
-            print(f"✅ Verified: '{filename}' is in the database.")
-        else:
-            print(f"⚠️ Warning: '{filename}' was not found in the database after adding.")
-
+        if self.db is None:
+            print("❌ Database is not initialized.")
+            return
+        try:
+            documents = self.db.get()
+            if any(filename == os.path.basename(doc['source']) for doc in documents['metadatas']):
+                print(f"✅ Verified: '{filename}' is in the database.")
+            else:
+                print(f"⚠️ Warning: '{filename}' was not found in the database after adding.")
+        except Exception as e:
+            print(f"❌ An error occurred while verifying: {str(e)}")
+        
+        
     def update_database(self):
         print("🔄 Updating database...")
         try:
@@ -613,11 +629,14 @@ class CollegeNotesRAG:
         with open(filename, "wb") as output_file:
             output.write(output_file)
 
+
 def main():
     if not os.path.exists(DATA_PATH):
         os.makedirs(DATA_PATH)
         print(f"📁 Created directory: {DATA_PATH}")
-        
+
+    rag = CollegeNotesRAG()
+
     if len(sys.argv) < 2:
         print_welcome_message()
         print_instructions()
@@ -625,13 +644,6 @@ def main():
 
     command = sys.argv[1]
     print(f"🎯 Command: {command}")
-
-    if command == "instructions":
-        print_instructions()
-        return
-
-    rag = CollegeNotesRAG()  # Create the instance only once, inside main
-
     commands = {
         "create": rag.create_database,
         "list": rag.list_documents,
@@ -649,13 +661,16 @@ def main():
             print(f"ℹ️  Usage: python college_notes_rag.py {command} <filename, search term, or query>")
             return
         print(f"🏃 Executing command: {command}")
-        if len(sys.argv) > 2:
-            commands[command](" ".join(sys.argv[2:]))
-        else:
-            commands[command]()
+        try:
+            if len(sys.argv) > 2:
+                commands[command](" ".join(sys.argv[2:]))
+            else:
+                commands[command]()
+        except Exception as e:
+            print(f"❌ An error occurred: {str(e)}")
     else:
         print("❌ Invalid command. Use 'instructions' for help.")
-
+        
 if __name__ == "__main__":
     main()
 
