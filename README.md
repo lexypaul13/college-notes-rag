@@ -1,21 +1,20 @@
-# College-notes-rag
 
-```markdown
-# College Notes RAG System
 
-## Overview
+**College Notes RAG System**
+
+**Overview**
 
 The College Notes RAG (Retrieval-Augmented Generation) system is an advanced tool designed to help students and researchers efficiently manage, search, and interact with their PDF documents, primarily focusing on college notes and academic papers. This system leverages AI technologies to provide semantic search capabilities and enable conversational interactions with document content.
 
-## Features
+**Features**
 
-- **Document Management**: Add, list, and delete PDF documents in the system.
-- **Semantic Search**: Perform content-based searches across all added documents.
-- **Conversational AI**: Engage in AI-powered conversations about specific documents.
-- **Database Management**: Create, update, and clear the document database.
-- **Export Functionality**: Export conversations for future reference.
+- **Document Management:** Add, list, and delete PDF documents in the system.
+- **Semantic Search:** Perform content-based searches across all added documents.
+- **Conversational AI:** Engage in AI-powered conversations about specific documents.
+- **Database Management:** Create, update, and clear the document database.
+- **Export Functionality:** Export conversations for future reference.
 
-## Installation
+**Installation**
 
 1. Clone the repository:
    ```
@@ -38,7 +37,7 @@ The College Notes RAG (Retrieval-Augmented Generation) system is an advanced too
    - Copy `.env.sample` to `.env`
    - Open `.env` and replace `your_api_key_here` with your actual Anthropic API key
 
-## Usage
+**Usage**
 
 Run the script with a command and any necessary arguments:
 
@@ -46,7 +45,7 @@ Run the script with a command and any necessary arguments:
 python college_notes_rag.py <command> [arguments]
 ```
 
-Available commands:
+**Available Commands:**
 
 - `create`: Create a new database
 - `list`: List all documents in the database
@@ -58,7 +57,7 @@ Available commands:
 - `converse <document>`: Start a conversation about a document
 - `semantic_search <query>`: Perform a semantic search across all documents
 
-## Examples
+**Examples**
 
 1. Add a document:
    ```
@@ -75,7 +74,7 @@ Available commands:
    python college_notes_rag.py converse document_name.pdf
    ```
 
-## Project Structure
+**Project Structure**
 
 - `college_notes_rag.py`: Main script containing the CollegeNotesRAG class and command-line interface.
 - `data/notes/`: Directory where added PDF documents are stored.
@@ -84,7 +83,7 @@ Available commands:
 - `.env.sample`: Template for the `.env` file.
 - `requirements.txt`: List of Python package dependencies.
 
-## Contributing
+**Contributing**
 
 Contributions to improve the College Notes RAG system are welcome. Please follow these steps:
 
@@ -93,12 +92,14 @@ Contributions to improve the College Notes RAG system are welcome. Please follow
 3. Commit your changes.
 4. Push to your fork and submit a pull request.
 
-## License
+**License**
 
 [Specify your license here, e.g., MIT, GPL, etc.]
 
-## Disclaimer
+**Disclaimer**
 
 This project is for educational purposes only. Ensure you have the right to use and process any documents you add to the system.
 
-```
+---
+
+This text can easily be converted into markdown format for your README file.
