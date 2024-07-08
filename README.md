@@ -101,5 +101,3 @@ Contributions to improve the College Notes RAG system are welcome. Please follow
 This project is for educational purposes only. Ensure you have the right to use and process any documents you add to the system.
 
 ---
-
-This text can easily be converted into markdown format for your README file.
