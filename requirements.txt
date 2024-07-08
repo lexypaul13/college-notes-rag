@@ -1,0 +1,12 @@
+langchain
+langchain-community
+langchain-anthropic
+python-dotenv
+unstructured
+chromadb
+tiktoken
+pypdf
+sentence-transformers
+PyPDF2
+python-docx
+markdown
