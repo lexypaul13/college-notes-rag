@@ -159,8 +159,6 @@ class CollegeNotesRAG:
     def __init__(self):
         self.embedding_function = self.get_embedding_function()
         self.db = self.load_database()
-        if self.db is None:
-            print("Warning: Database not loaded. Please run 'create' command first.")
         self.llm = ChatAnthropic(
             model_name="claude-3-sonnet-20240229",
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY")
@@ -211,7 +209,6 @@ class CollegeNotesRAG:
 
     def load_database(self):
         if not os.path.exists(CHROMA_PATH):
-            print("📢 Database does not exist. It will be created when you add documents.")
             return None
         try:
             return Chroma(persist_directory=CHROMA_PATH, embedding_function=self.embedding_function)
@@ -667,7 +664,7 @@ def main():
 
     if command in commands:
         if command in ["delete", "add", "search", "converse", "semantic_search"] and len(sys.argv) < 3:
-            print(f"ℹ️  Usage: python college_notes_rag.py {command} <filename, search term, or query>")
+            print(f"ℹ️  Usage: python college_notes_rag.py {command} <filename, or search term>")
             return
         print(f"🏃 Executing command: {command}")
         try:
