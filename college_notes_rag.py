@@ -36,6 +36,8 @@ import matplotlib
 matplotlib.use('TkAgg')  # Use TkAgg backend for cross-platform compatibility
 import matplotlib.pyplot as plt
 import shutil
+from langchain.chains import ConversationalRetrievalChain
+from langchain.prompts import PromptTemplate
 
 # Suppress warnings and configure logging
 warnings.filterwarnings("ignore")
@@ -172,40 +174,32 @@ class CollegeNotesRAG:
     @staticmethod
     def get_embedding_function():
         return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-    
+
     def create_database(self):
         print("🚀 Creating database...")
         if not os.path.exists(DATA_PATH):
             os.makedirs(DATA_PATH)
             print(f"📁 Created directory: {DATA_PATH}")
-    
+
         documents = DirectoryLoader(DATA_PATH, glob="*.pdf").load()
         if not documents:
             print("❌ No PDF documents found in the data/notes directory.")
             return
-    
-        chunks = []
-        for doc in documents:
-            chunks.extend(self.process_document(doc.metadata['source']))
-    
+
+        # Refined chunking strategy
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1500,
+            chunk_overlap=300,
+            length_function=len,
+            separators=["\n\n", "\n", ".", " ", ""]
+        )
+        chunks = text_splitter.split_documents(documents)
+
         print(f"Processing {len(chunks)} chunks...")
-    
-    # Increase batch size
-        batch_size = 100
-        total_batches = math.ceil(len(chunks) / batch_size)
-    
-        for i in range(0, len(chunks), batch_size):
-            batch = chunks[i:i+batch_size]
-            if i == 0:
-                self.db = Chroma.from_documents(batch, self.embedding_function, persist_directory=CHROMA_PATH)
-            else:
-                self.db.add_documents(batch)
-            print(f"✅ Processed batch {i//batch_size + 1} of {total_batches}")
-    
+
+        self.db = Chroma.from_documents(chunks, self.embedding_function, persist_directory=CHROMA_PATH)
         self.db.persist()
         print(f"✅ Database created with {len(chunks)} chunks from {len(documents)} documents.")
-        
-        print(f"Database persisted to {CHROMA_PATH}")
 
     def load_database(self):
         if not os.path.exists(CHROMA_PATH):
@@ -327,70 +321,102 @@ class CollegeNotesRAG:
             print(f"\n{i}. From: {os.path.basename(meta['source'])}")
             print(f"   {doc[:200]}...")
     
-    def start_conversation(self, initial_document_name: str) -> Tuple[List[Tuple[str, str]], Set[str]]:
+    def start_conversation(self, document_name: str) -> List[Tuple[str, str]]:
         chat_history = []
-        documents_used = set([initial_document_name])
-        current_document = initial_document_name
-        print(f"🚀 Starting conversation about 📄 {current_document}")
+        print(f"🚀 Starting conversation about 📄 {document_name}")
         print("💡 Type 'exit' to end the conversation")
-        print("🔄 Type 'switch <pdf_name>' to change the document")
-        
+
+        retriever = self.db.as_retriever(search_kwargs={"k": 5})
+        qa_chain = self.create_qa_chain(retriever)
+
         while True:
             query = input("🙋 You: ")
-            
+
             if query.lower() == 'exit':
                 print("👋 Ending conversation...")
                 break
-            
-            if query.lower().startswith('switch '):
-                new_document = query.split(' ', 1)[1].strip("'\"")  # Remove any quotes
-                # Get all PDF files in the DATA_PATH directory
-                available_files = [f for f in os.listdir(DATA_PATH) if f.lower().endswith('.pdf')]
-                # Check if the new_document exists (case-insensitive)
-                matching_file = next((f for f in available_files if f.lower() == new_document.lower()), None)
-                
-                if matching_file:
-                    current_document = matching_file
-                    documents_used.add(current_document)
-                    print(f"🔀 Switched to document: 📄 {current_document}")
-                else:
-                    print(f"❌ Document {new_document} not found. Available documents:")
-                    for file in available_files:
-                        print(f"  - {file}")
-                    print(f"Continuing with 📄 {current_document}")
-                continue
-            
-            retriever = self.db.as_retriever(search_kwargs={"k": 3, "filter": {"source": os.path.join(DATA_PATH, current_document)}})
-            qa_chain = ConversationalRetrievalChain.from_llm(self.llm, retriever=retriever)
-            
+
             result = qa_chain({"question": query, "chat_history": chat_history})
             answer = result['answer']
             print(f"🤖 AI: {answer}")
-            
-            chat_history.append((query, answer))
-        
-        return chat_history, list(documents_used)
 
-    def converse_and_export(self, initial_document_name):
-        data_path_file = os.path.join(DATA_PATH, initial_document_name)
-        current_dir_file = os.path.join(os.getcwd(), initial_document_name)
+            chat_history.append((query, answer))
+
+        return chat_history
     
-        if os.path.exists(data_path_file):
-            file_path = data_path_file
-        elif os.path.exists(current_dir_file):
-            file_path = current_dir_file
-        else:
-            print(f"❌ Document {initial_document_name} not found in {DATA_PATH} or current directory.")
+    def create_qa_chain(self, retriever):
+        prompt_template = """You are an AI assistant helping with questions about a PDF document. 
+        Use the following pieces of context to answer the question at the end. 
+        If you don't know the answer, just say that you don't know, don't try to make up an answer.
+
+        When answering, please follow these guidelines:
+        1. Provide specific examples from the text when relevant, including any case studies or scenarios mentioned.
+        2. If the question asks about a particular section or concept, focus on that specific information.
+        3. Include key points and main ideas from the relevant sections, using the exact wording from the text where appropriate.
+        4. If there are numbered lists, steps, or rules in the text, include them in your answer.
+        5. Use quotation marks for direct quotes from the text.
+        6. Highlight any unique ideas or approaches mentioned in the text, especially those that might be counterintuitive or go against common assumptions.
+        7. If the text mentions specific examples or scenarios, be sure to include them in your answer.
+
+        {context}
+
+        Based on the above context, provide a comprehensive and specific answer to the following question, making sure to include any relevant examples, unique ideas, and specific scenarios mentioned in the text:
+        Question: {question}
+        Answer: """
+
+        PROMPT = PromptTemplate(
+            template=prompt_template, input_variables=["context", "question"]
+        )
+
+        return ConversationalRetrievalChain.from_llm(
+            llm=self.llm,
+            retriever=retriever,
+            return_source_documents=True,
+            combine_docs_chain_kwargs={"prompt": PROMPT}
+        )
+
+
+    def converse_and_export(self, document_name):
+        if not self.db:
+            print("❌ Database not initialized. Please create or load a database first.")
             return
-        chat_history, documents_used = self.start_conversation(file_path)
+
+        chat_history = []
+        print(f"🚀 Starting conversation about 📄 {document_name}")
+        print("💡 Type 'exit' to end the conversation")
+
+        retriever = self.db.as_retriever(search_kwargs={
+            "k": 7  # Retrieve 7 most relevant chunks
+        })
+        qa_chain = self.create_qa_chain(retriever)
+
+        while True:
+            query = input("🙋 You: ")
+
+            if query.lower() == 'exit':
+                print("👋 Ending conversation...")
+                break
+
+            result = qa_chain({"question": query, "chat_history": chat_history})
+            answer = result['answer']
+            source_docs = result['source_documents']
+
+            print(f"🤖 AI: {answer}\n")
+            print("📚 Sources used:")
+            for i, doc in enumerate(source_docs, 1):
+                print(f"  {i}. {doc.metadata['source']} (Page: {doc.metadata.get('page', 'N/A')})")
+                print(f"     Excerpt: {doc.page_content[:100]}...")
+            print()
+
+            chat_history.append((query, answer))
         if chat_history:
             export_choice = input("💾 Do you want to export the conversation? (yes/no): ").lower()
             if export_choice == 'yes':
                 format = input("📁 Export format (pdf/md/docx): ").lower()
                 if format in ['pdf', 'md', 'docx']:
-                    content = self.prepare_export_content(chat_history, documents_used)
+                    content = self.prepare_export_content(chat_history, document_name)
                     desktop_path = os.path.expanduser("~/Desktop")
-                    filename = os.path.join(desktop_path, f"conversation_export_{len(chat_history)}_exchanges")
+                    filename = os.path.join(desktop_path, f"conversation_export_{document_name}_{len(chat_history)}_exchanges")
                     try:
                         if format == 'pdf':
                             self.export_to_pdf(content, f"{filename}.pdf")
@@ -409,10 +435,23 @@ class CollegeNotesRAG:
             else:
                 print("👋 Conversation ended without exporting.")
 
+                
+                
+    def print_document_content(self, document_name):
+        if self.db is None:
+            print("Database not initialized.")
+            return
+        
+        print(f"📄 Printing content for {document_name}:")
+        results = self.db.similarity_search("", filter={"source": os.path.join(DATA_PATH, document_name)}, k=10)
+        for i, doc in enumerate(results):
+            print(f"Chunk {i + 1}:")
+            print(f"Content: {doc.page_content}")
+            print("---")
+
     @staticmethod
-    def prepare_export_content(chat_history, documents_used):
-        content = "🗣️ Conversation Log:\n\n"
-        content += f"📚 Documents referenced: {', '.join(documents_used)}\n\n"
+    def prepare_export_content(chat_history, document_name):
+        content = f"🗣️ Conversation Log for document: {document_name}\n\n"
         for i, (question, answer) in enumerate(chat_history, 1):
             content += f"❓ Q{i}: {question}\n"
             content += f"💡 A{i}: {answer}\n\n"
@@ -658,14 +697,16 @@ def main():
         "add": rag.add_document,
         "clear": rag.clear_database,
         "search": rag.search_documents,
-        "converse": rag.converse_and_export,
-        "semantic_search": rag.semantic_search_and_visualize
+        "converse": lambda doc_name: rag.converse_and_export(doc_name),
+        "semantic_search": rag.semantic_search_and_visualize,
+        "print_content": rag.print_document_content  # Add this line
     }
 
     if command in commands:
-        if command in ["delete", "add", "search", "converse", "semantic_search"] and len(sys.argv) < 3:
-            print(f"ℹ️  Usage: python college_notes_rag.py {command} <filename, or search term>")
+        if command in ["delete", "add", "search", "converse", "semantic_search", "print_content"] and len(sys.argv) < 3:
+            print(f"ℹ️ Usage: python college_notes_rag.py {command} <filename, or search term>")
             return
+
         print(f"🏃 Executing command: {command}")
         try:
             if len(sys.argv) > 2:
