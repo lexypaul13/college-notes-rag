@@ -424,6 +424,7 @@ class CollegeNotesRAG:
                             with open(f"{filename}.md", 'w') as f:
                                 f.write(content)
                         elif format == 'docx':
+                            from docx import Document
                             doc = Document()
                             doc.add_paragraph(content)
                             doc.save(f"{filename}.docx")
